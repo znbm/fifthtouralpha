@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+	<meta charset="UTF-8">
+	<title>Fifth... so far.</title>
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<p><img src="fifth.png" alt=""></p>
+<h2>An (extremely brief, pre-alpha) overview of Fifth.</h2>
+<p>Fifth is a programming language. It began as a thought experiment
+to design a language faster than C, adopting RISC-V as a sole target mainly
+for the benefits of eschewing portability. It gradually became a
+&quot;RISC-V swiss army knife&quot;, mired in architecture-specific behavior
+that has now been relegated entirely to the inline assembly extension.
+At present, it's still a long way from being implemented,
+but I think it's emerged as a modern, simple, and powerful language
+for embedded and high-performance disciplines.</p>
+<p>A formal standard is forthcoming, but progress has been frustratingly slow.
+In the meantime, this document offers a brief outline of the language,
+with an emphasis on its novel features and improvements over C.
+Until then, syntactic and semantic ambiguities might exist; expect
+novel features to disappear in the future.</p>
+<p>Like the standard, this document uses the lowering notation <code>abc ⟷ xyz</code>
+to indicate that two portions of code <code>abc</code> and <code>xyz</code> are interchangable.</p>
+<p>Some terminology:</p>
+<ul>
+<li>In Fifth, &quot;static&quot; means &quot;at compile time&quot;. Static expressions must be
+evaluated at compile time, static variables must have compile-time-known values, etc.
+Unlike C, stasis has nothing to do with storage duration or symbol visibility.</li>
+<li>A malformed portion of code may &quot;creak&quot;
+(cause the compiler to emit a warning and continue compilation)
+or &quot;croak&quot;
+(cause the compiler to emit an error and halt).</li>
+</ul>
+<h2>Basics</h2>
+<p>Fifth source code is UTF-8 encoded text.
+Conventionally, it's stored in files with the extension <code>.5th</code>.</p>
+<p>Comments begin with an <code>#</code> outside of a character or string literal
+and continue until the end of the line.</p>
+<pre><code> # This is a comment.
+</code></pre>
+<h2>Types</h2>
+<p>Fifth is statically and (somewhat) strongly typed.</p>
+<p><code>lit</code> is the type of literals.
+<code>lit</code> operations are performed at arbitrary precision;
+however, <code>lit</code> is an implicitly static type, so all are resolved at
+compile time. <code>lit</code>s cast implicitly to any other type.</p>
+<p><code>nat</code> and <code>int</code> are unsigned and two's complement signed integers, respectively.
+Their widths are equal to <code>XLEN</code>,
+i.e. the number of bits in an address on the target machine.
+Many of their behaviors -- overflow, division by zero, etc. -- are undefined,
+at least when using the typical operators.
+Fixed-width variants -- <code>nat8</code>, <code>int64</code>, etc. -- are also available.</p>
+<p><code>bool</code> is a boolean type of unspecified width defined only for the values <code>0</code> and <code>1</code>.
+<code>bool</code>s are used in conditional expressions,
+and are usually obtained from comparison operators.
+<code>true</code> and <code>false</code> are reserved words of type <code>bool</code>
+with values <code>1</code> and <code>0</code>, respectively.</p>
+<p>Later, we'll see a few other types, including pointers.
+Floating point types and operations are defined in a separate extension.</p>
+<h2>Numeric Literals</h2>
+<p>Numeric literals represent fixed, immediate numeric values.
+Radix prefixes allow writing in binary, octal, and decimal;
+single underscores are allowed between successive digits.
+The exponent suffixes <code>e</code> (unless in a hexadecimal literal) and <code>p</code>
+allow scaling by a power of 10 or 2, respectively.</p>
+<pre><code>5
+0.2
+4_000_000
+0b01101001
+0o70.34
+0xDEAD_BEEF
+6.18e-9
+0x1.FFp0b10
+1p5
+</code></pre>
+<p>Note that all literals are of type <code>lit</code>; no distinction is made between
+&quot;integer&quot; and &quot;floating point&quot; literals.</p>
+<h2>Character Literals</h2>
+<p>Unicode code points are represented by enclosing characters in single quotes.
+Backslashes create typical escape sequences.</p>
+<pre><code>'V'
+'⅕'
+'Ä'
+'\n'
+'\0'
+'\x3C'
+'\u2306'
+'\U000110F5'
+'\\'
+</code></pre>
+<p>Character literals containing multiple
+characters are equivalent to lists of each character.</p>
+<pre><code>'aeiou' ⟷ 'a', 'e', 'i', 'o', 'u'
+'\r\n\0' ⟷ 0x0D, 0x0A, 0
+</code></pre>
+<h2>String Literals</h2>
+<p>String literals are a shorthand for allocating immutable UTF-8-encoded character strings.
+They consist of one or more characters enclosed in double quotes.
+Unlike C, strings are <em>not</em> implicitly null-terminated.</p>
+<pre><code>&quot;Here's some text.&quot;
+&quot;Hello, world!\0&quot;
+&quot;\&quot;höwdÿ\&quot;&quot;
+</code></pre>
+<p>Strings evaluate to a list containing a <code>nat8 ptr</code> and a <code>lit</code>, the latter being the size of the string in bytes.
+Strings separated by whitespace catenate.</p>
+<h2>Ranges</h2>
+<p>Ranges are a useful shorthand for writing lists.
+<code>a .. b</code> denotes a list from <code>a</code> up to and including <code>b</code>.
+<code>a ... b</code> denotes a list from <code>a</code> up to and excluding <code>b</code>.
+<code>a .. i .. b</code> and <code>a ... i ... b</code> denote lists
+from <code>a</code> in steps of <code>i</code> to <code>b</code> inclusive or exclusive, respectively.</p>
+<pre><code>0..5 ⟷ 0, 1, 2, 3, 4, 5
+0...5 ⟷ 0, 1, 2, 3, 4
+a...( a + 4 ) ⟷ a, a + 1, a + 2, a + 3
+0..1..5 ⟷ 0..5 ⟷ 0, 1, 2, 3, 4, 5
+3..2..9.5 ⟷ 3, 5, 7, 9
+6...-0.5...4 ⟷ 6, 5.5, 5, 4.5
+5..0 ⟷ 
+1..4 ⟷ 
+</code></pre>
+<p>In all cases, <code>a</code> and <code>b</code> may be nonstatic (TODO: this complicates things),
+but <code>i</code> must be static and nonzero.
+If <code>i</code> &gt; 0 but <code>a</code> &lt; <code>b</code> (or vice versa),
+the list is empty. (TODO: or should this be UB?)</p>
+<h2>Operators</h2>
+<p>Values are combined by operators to form expressions.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Symbol</th>
+<th>Operator</th>
+<th>Precedence</th>
+<th>Associativity</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="text-align:center"><code>(</code> <code>)</code>, <code>[</code> <code>]</code>, <code>.</code></td><td>of</td><td>1</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>+</code></td><td>positive</td><td>2</td><td>right-to-left</td></tr>
+<tr><td style="text-align:center"><code>-</code></td><td>negative</td><td>2</td><td>right-to-left</td></tr>
+<tr><td style="text-align:center"><code>!</code></td><td>not</td><td>2</td><td>right-to-left</td></tr>
+<tr><td style="text-align:center"><code>⁎</code></td><td>mutiplication</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>/</code></td><td>division</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>%</code></td><td>remainder</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>&amp;</code></td><td>and</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>&amp;!</code></td><td>and not</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>&lt;&lt;</code></td><td>left shift</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>&gt;&gt;</code></td><td>right shift</td><td>3</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>+</code></td><td>addition</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>-</code></td><td>subtraction</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>|</code></td><td>or</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>|!</code></td><td>or not</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>^</code></td><td>xor</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>^!</code></td><td>xor not</td><td>4</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>==</code></td><td>equal</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>!=</code></td><td>not equal</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>&gt;</code></td><td>greater than</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>&lt;</code></td><td>less than</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>&gt;=</code></td><td>greater than or equal</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>&lt;=</code></td><td>less than or equal</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>in</code></td><td>in</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>!in</code></td><td>not in</td><td>5</td><td>explicit</td></tr>
+<tr><td style="text-align:center"><code>not</code></td><td>longform not</td><td>6</td><td>right-to-left</td></tr>
+<tr><td style="text-align:center"><code>or</code></td><td>longform or</td><td>7</td><td>left-to-right</td></tr>
+<tr><td style="text-align:center"><code>and</code></td><td>longform and</td><td>8</td><td>left-to-right</td></tr>
+</tbody>
+</table>
+<p>Assigners -- <code>=</code>, <code>+=</code>, <code>++</code>, etc. -- are discussed later.</p>
+<h2>The Of Operator</h2>
+<p>The <code>of</code> operator is used for a variety of purposes, including
+function and macro calls,
+pointer dereferences,
+element access,
+and casting.
+It has three broadly interchangable syntaxes:</p>
+<pre><code>( a ) ⟷ [ a ] ⟷ .a
+</code></pre>
+<h2>Arithmetic Operators</h2>
+<p>The <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, and <code>%</code> operators compute
+addition, subtraction, multiplication, division,
+and remainder.
+The unary <code>-</code> operator negates its operand.</p>
+<pre><code>2 + 3 ⟷ 5
+8 - 1 ⟷ 7
+-4 * -8 ⟷ 32
+-9 / 3 ⟷ -3
+9 % -2 ⟷ --1
+</code></pre>
+<h2>Bitwise Operators</h2>
+<p>TODO: examples that don't depict <code>lit</code> semantics</p>
+<p>The unary operator <code>!</code> inverts the bits of its operand.</p>
+<p>The <code>&amp;</code>, <code>|</code>, and <code>^</code> operators compute the bitwise
+and, or and exclusive or of their operands, respectively.</p>
+<p>The <code>&amp;!</code>, <code>|!</code>, and <code>^!</code> operators are also provided
+as a shorthand.</p>
+<pre><code>a &amp;! b ⟷ a &amp; !( b )
+a |! b ⟷ a | !( b )
+a ^! b ⟷ a ^ !( b )
+</code></pre>
+<p><code>&lt;&lt;</code> performs a leftward logical bit shift.
+<code>&gt;&gt;</code> performs a rightward arithmetic bit shift if its
+first operand is of type <code>int</code>, or a logical shift otherwise.
+Shifts of more than 8 * the size of the righthand operand are undefined.</p>
+<p>Bitfields could be the subject of a future extension.</p>
+<h2>Comparison Operators</h2>
+<p>The binary operators <code>==</code>, <code>!=</code>, <code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, and <code>&lt;=</code>
+compare their operands and yield a result of type <code>bool</code>.</p>
+<pre><code>3 != 5 ⟷ true
+3 &gt; 5 ⟷ false
+3 &lt;= 5 ⟷ true
+</code></pre>
+<p>The operators <code>in</code> and <code>!in</code> assess whether the lefthand operand
+is equal or nonequal to any member of the righthand list.</p>
+<pre><code>5 in 3, 4, 5 ⟷ true
+5 !in 1...9 ⟷ false
+5 in ⟷ false
+</code></pre>
+<p>When operating on boolean values, <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>!</code>, etc.
+behave as logical operators.</p>
+<pre><code>true &amp; false ⟷ false
+true | false ⟷ true
+true ^ false ⟷ true
+!true ⟷ false
+</code></pre>
+<p>However, the binary operators have frustratingly high precidence,
+and <code>!</code> can be hard to read in complex expressions.</p>
+<p>More suitable are the longform operators <code>and</code>, <code>or</code>, and <code>not</code>.
+They have low precidence and automatically cast their operands to <code>bool</code>.
+<code>and</code> and <code>or</code> are short-circuiting -- their second operand
+isn't evaluated if the first is sufficient to determine their truthiness.</p>
+<pre><code>true and 125 ⟷ true
+0.0 or false ⟷ false
+not not 0x4C ⟷ true
+</code></pre>
+<h2>Assignment Statements</h2>
+<p>Programs are formed from statements, of which assignment statements are the most fundamental.
+Assignment statements consist of a list (the &quot;left-hand side&quot;), an assigner,
+and another list (the &quot;right-hand side&quot;). Statements are terminated with semicolons, but
+Fifth will automatically insert semicolons at line breaks according to an as-of-yet unwritten
+protocol.</p>
+<p><code>=</code> is the basic assigner.</p>
+<pre><code>v = 5
+x, y, z = 2, 4, 6  ⟷ x = 2; y = 4; z = 6
+a, b = b, a # swaps a and b
+</code></pre>
+<p>The number of elements on each side don't have to match.
+Extra elements on the left are assigned the last element on the right.
+Extra elements on the right are discarded.
+<code>_</code> can be used to &quot;skip&quot; elements.</p>
+<pre><code>h, j, k = 1, 0 ⟷ h = 1; j = 0; k = 0
+m, n = 3, 4, 5 ⟷ m = 3; n = 4
+c, _, d = 13, 14, 15 ⟷ c = 13; d = 15
+</code></pre>
+<p>On the left-hand side, a type name followed by a
+new identifier is a variable declaration.
+Variables cannot be declared without an assignment,
+but <code>_</code> can be used to leave their value undefined.
+Note that <em>every</em> newly declared variable must have a type in front of it.</p>
+<pre><code>nat n = 16
+int r, int s = _ ⟷ int r = _; int s = _
+</code></pre>
+<p>For left-hand-side lists without declarations,
+operators of precedence 3 and 4 can be used in compound assignments.</p>
+<pre><code>k /= 2 ⟷ k = k / 2
+p, q &amp;= 0b1001, 0b0110 ⟷ p = p &amp; 0b1001; q = q &amp; 0b0110
+</code></pre>
+<p><code>++</code> and <code>--</code> are assigners with no right-hand side,
+equivalent to <code>+= 1</code> and <code>-= 1</code>, respectively.</p>
+<pre><code>c -- ⟷ c -= 1
+a, b ++ ⟷ a, b += 1
+</code></pre>
+<h2>Casts</h2>
+<p>Fifth has two types of cast: prescriptive
+and descriptive. Both are achieved with the <code>of</code> operator.</p>
+<p>Prescriptive casts potentially modify values to achieve a numerically correct result.</p>
+<pre><code>int32( r )
+(nat8 ptr)( y )
+</code></pre>
+<p>Descriptive casts interpret an existing value as being of a new type.</p>
+<pre><code>m.nat
+k(int16)
+</code></pre>
+<p>Generally, static types (<code>lit</code>s, <code>type</code>s, <code>macro</code>s, etc.) cannot be descriptively cast.
+Similarly, descriptively casting to a wider type invokes undefined behavior.</p>
+<h2>Conditionals</h2>
+<p>The <code>if</code> keyword allows for the conditional execution of a statement or
+block of statements based on the result of a boolean expression.</p>
+<pre><code>if x &gt; 5: return false
+
+if q != j + 6
+{
+    q = j + 6
+    j -= 6
+}
+</code></pre>
+<p>The <code>el</code> keyword presents a subsequent alternative if the <code>if</code> expression fails.
+An omitted boolean expression is equivalent to <code>true</code>.</p>
+<pre><code>if r &gt; 0:
+    t += r
+el r &lt; 0:
+    t += -r + 1
+el:
+    t, r = 4 - z
+</code></pre>
+<p>Fifth has no &quot;switch&quot; statement.
+However, using lists and the <code>in</code> operator is usually terse enough.</p>
+<pre><code>if c in '0'..'9': val = c - '0'
+el c in 'ABCDEF': val = c - 'A' + 10
+el c in 'abcdef': val = c - 'a' + 10
+el: return false
+</code></pre>
+<p>A single assignment statement can be provided before the boolean expression, separated by a semicolon.
+Any declared variables are visible in all branches of the conditional.</p>
+<pre><code>if nat j, nat k = readj(), readk(); j != k
+{
+    w = j + k
+}
+el
+{
+    w = j &lt;&lt; 1
+    return readk()
+}
+</code></pre>
+<p>Finally, conditionals can be evaluated at compile time with the <code>static</code> qualifier.
+Conditionals are allowed at global scope, where they are implicitly static.</p>
+<pre><code>static if 'A' !in env.extensions: useatomics = false
+</code></pre>
+<h2>Loops</h2>
+<p><code>for</code> is Fifth's looping construct.</p>
+<p>In its simplest form, <code>for</code> is an infinite loop.</p>
+<pre><code>for: update()
+</code></pre>
+<p>A single boolean expression can be provided, discontinuing the loop when it becomes false.</p>
+<pre><code>for u != v
+{
+    u, v = getu( u ), getv( v )
+}
+</code></pre>
+<p>Additionally, a single assignment statement can be placed before the expression, separated by a semicolon.
+The scope of any declared variables is limited to the loop.</p>
+<pre><code>for nat i = 0; i &lt; 10
+{
+    i += xvalue( i )
+}
+</code></pre>
+<p>Finally, an arbitrary number of assignment statements can be placed after the expression,
+to be executed at the conclusion of each iteration.</p>
+<pre><code>for nat x, y = 0, 10; x + y &lt; 16; x += 2; y --
+{
+    setsquare( x, y )
+}
+</code></pre>
+<p>While these constructs are perfectly fine,
+idiomatic loops will typically use &quot;in&quot; syntax,
+achieved by replacing the boolean expression with a pseudo-statement
+consisting of a type, identifier, <code>in</code>, and a list.</p>
+<pre><code>for nat i in 0...10: displayval( i )
+
+for j, k = false; nat8 c in '{}()[]&lt;&gt;'; j, k = !j, !k
+{
+    j, k = putbracket( c, j, k )
+}
+</code></pre>
+<p>If you want a loop without a body, explictly use a colon and a semicolon.</p>
+<pre><code>for ; n &gt; 0; n --; k ++:;
+</code></pre>
+<p>One other looping construct exists: <code>til</code> differs only from <code>for</code> in that its first iteration
+is performed unconditionally.</p>
+<pre><code>til nat32 x, nat32 r = _;  r - x &gt; range; n ++
+{
+    x = rand32()
+    r = x % range
+}
+</code></pre>
+<h2>Labels and Jumps</h2>
+<p><code>jump</code> is Fifth's primary control flow keyword.</p>
+<p>A bare <code>jump</code> exits the current block.</p>
+<pre><code>for
+{
+    if not update(): jump
+}
+</code></pre>
+<p>Labels are created with an identifier and a colon.
+Any label within the current function or macro may be jumped to, regardless of scope.</p>
+<pre><code>if r &lt; 0: jump error
+for k != 0: k = nextmode( r )
+error:
+return false
+</code></pre>
+<p><code>jump for</code> (or <code>jump til</code>, regardless of loop format) skips to the next loop iteration.</p>
+<pre><code>for nat8 i in 0...2...256
+{
+    if i &amp; 1p6 != 0: jump for # skip when 6th bit is set
+    feedbyte( i )
+    setbyte( i )
+}
+</code></pre>
+<h2>Functions</h2>
+<p>Functions are expressed at global scope
+as a list of return values, the keyword <code>func</code>,
+an identifier, and a list of parameters,
+followed by a definition.</p>
+<pre><code>nat func hypots( nat b, nat b )
+{
+    return a * a + b * b
+}
+</code></pre>
+<p>Return values and parameters aren't necessary;
+in fact, parentheses aren't either.</p>
+<pre><code>func qroutine
+{
+    if bank( 2 ) &lt; bvalue: return
+    avalue = 0xC4
+    cvalue = bank( 1 )
+}
+</code></pre>
+<p>Function arguments are mutable and passed by value.
+Lists of multiple values may be returned.</p>
+<pre><code>int, int func polarspiral( int t )
+{
+    return 1, 4
+}
+</code></pre>
+<p>Return values may be named. Named return values exist implicitly within the function,
+and may be omitted from a <code>return</code> statement. If all return values are named,
+the function implicitly returns at the end.
+Also, parameters and arguments may share names.</p>
+<pre><code>nat x func square nat x: x *= x
+
+( nat8 C, bool isletter )func capitalize( nat8 c )
+{
+    if c in 'a'...'z': return c &amp;! 0b00100000, true
+    el c in 'A'...'Z': return c, true
+    return c, false
+}
+</code></pre>
+<p>The rightmost parameters and return values can be given static default values.</p>
+<pre><code>TODO
+</code></pre>
+<p>Functions can be used as first-class values.
+The actual &quot;value&quot; of a function is roughly akin to that of a function pointer.</p>
+<pre><code>nat func nat routine = readlines
+nat r = routine( 5 )
+</code></pre>
+<h2>Macros</h2>
+<p>TODO: macros
+TLDR: macros are pass-by-value and evaluated statically,
+enabling things like overloading without mangling or polluting the calling convention.</p>
+<h2>Type Definitions</h2>
+<p>New types can be declared like variables.</p>
+<pre><code>type byte = nat8
+type Q16_16 = int32
+</code></pre>
+<p>Types don't have to be scalar. Aggregates are lists of types,
+of which individual elements can be accessed via indexes or optional names.</p>
+<pre><code>type pair = bool, bool
+type vec3 = int x, int y, int z
+
+pair p = true, false
+bool b = p.0
+
+vec3 v = 3, 6, 9
+v.x = 12
+</code></pre>
+<h2>Defer</h2>
+<p>TODO: is defer even necessary?</p>
+<h2>Pointers</h2>
+<p>Pointers refer to locations in memory.</p>
+<p>The <code>of</code> operator -- conventionally, <code>[</code> <code>]</code> -- is used to dereference pointers.
+An empty dereference is equivalent to a dereference with an offset of zero.
+An <code>of</code> with multiple elements expands distributively into a list of dereferences.</p>
+<pre><code>p[] ⟷ p[ 0 ] ⟷ ( p + 0 )[]
+
+p[ 1..3 ] ⟷ p[ 1, 2, 3 ] ⟷ p[ 1 ], p[ 2 ], p[ 3 ]
+</code></pre>
+<p>Combining pointers and lists distributively allows for the terse expression of
+memory manipulation routines. (Naturally, it's up to the implementation
+to identify and vectorize them.)</p>
+<pre><code># Zero a region of memory, i.e. memset( p, 0, 256 * sizeof( p ) ).
+p[ 0...256 ] = 0
+
+# Copy a region of memory, i.e. memmove( u, v, 0x7FF * sizeof( u ) ).
+# Asserting the two regions are nonoverlapping could speed things up.
+u[ 0..0x07FF ] = v[ 0..0x07FF ]
+
+# Decrement every fourth element in a region of memory.
+s[ 0..4..0x2FF ] --
+</code></pre>
+<p>Pointer arithmetic is performed as a multiple of alignment --
+e.g. adding 1 to a <code>nat32 ptr</code> effectively increments the underlying
+address by 4. If breaking this alignment is required, pointers
+are granular down to increments of the inverse of their size.</p>
+<pre><code>nat32 ptr p = 1/2 ⟷ nat32 ptr p = (nat32 ptr)( 0x00000002 )
+p += 0.25 # advance by one byte
+</code></pre>
+<p>Unlike C, Fifth has no &quot;null pointers&quot; -- the zero-valued
+pointer is no different from any other.
+Multiple returns are the preferred means of communicating that a
+pointer is invalid.</p>
+<p>Also unlike C, Fifth has no &quot;address of&quot; operator;
+variables, etc. are nonaddressable.
+Obtaining something to point to requires allocation.</p>
+<h2>Allocation</h2>
+<p>Allocation is performed with <code>make</code>, assigned to a pointer of determinable type.</p>
+<pre><code>nat ptr a = make[ 5 ] 1, 2, 3, 4, 5
+</code></pre>
+<p><code>make</code> is invoked with one or both of the <code>of</code> operator and a succeeding list.
+The former contains one nonzero, possibly nonstatic <code>nat</code> specifying the number of
+objects to allocate. The latter specifies the values of the objects.
+If the former is missing or empty, the list determines the size of the allocation.
+If the latter is missing, the values of the objects are undefined.</p>
+<pre><code>nat ptr a = make 1, 2, 3  ⟷ 
+nat ptr a = make[] 1, 2, 3  ⟷ 
+nat ptr a = make[ 3 ] 1, 2, 3  ⟷ 
+nat ptr a = make[ 3 ]
+a[ 0...3 ] = 1, 2, 3
+</code></pre>
+<p>Aggregates can be also be allocated.</p>
+<pre><code>type triple = nat, nat, nat
+
+triple ptr a = make[ 2 ] 1, 1, 1, 2, 2, 2
+</code></pre>
+<p>For optimization purposes, allocated values
+may be padded, aligned, or reordered.
+Qualifying a type or <code>make</code> invocation
+with the <code>&lt;packed&gt;</code> attribute prevents this.</p>
+<pre><code>&lt;packed&gt; type entry = 
+nat32 value,
+nat8 id,
+nat8 # padding
+
+nat32 ptr b = &lt;packed&gt; make[ 64 ]
+</code></pre>
+<p>After the end of its containing function, using memory allocated with <code>make</code>
+invokes undefined behavior.
+Beyond this, Fifth doesn't specify <em>how</em> it is allocated (statically,
+on the stack, on the heap, etc.).</p>
+<p><code>make</code> can be qualified with <code>static</code>.
+<code>static make</code> has the additional restriction that its allocation size
+must be known statically, but allows using its memory at any subsequent
+point in the program.
+At global scope, <code>make</code> is implicitly static.</p>
+<p>TODO: possible name candidates: <code>make</code>, <code>mem</code>, <code>alloc</code>, <code>array</code>, <code>get</code>, etc.</p>
+<h2>Unions</h2>
+<p>Values that need to be descriptively cast often might benefit from
+being declared with multiple types. Such a value has the width of its
+widest type, but semantics according to the leftmost type unless descriptively cast.</p>
+<pre><code>nat or int b = 5
+
+int8 or int16 or int32 b = 257
+
+( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4 
+</code></pre>
+<p>TODO: resolve lots of pitfalls!</p>
+<h2>env</h2>
+<p>TODO: <code>env</code> has a lot of fields</p>
+<h2>Customs</h2>
+<p>By default, functions and global variables have internal linkage --
+that is, they're invisible outside of the current file.
+To make a symbol openly visible, use <code>export</code>.</p>
+<pre><code>export lit v = 5
+export nat64 r = 0x70000000
+
+export nat func square( nat x ): return x * x
+</code></pre>
+<p>Likewise, to use a symbol declared in another compilation unit,
+use <code>import</code>. Generally, no values are assigned to these imports
+(although an imported function <em>may</em> have a body containing assertions or static conditionals).</p>
+<pre><code>import int32 q
+import lit w
+
+import any ptr calloc( nat num, nat size );
+import any ptr memchr( &lt;const&gt; any ptr ptr_, int32 value, nat num );
+</code></pre>
+<h2>Inclusion</h2>
+<p><code>import</code> has another function: including files.</p>
+<pre><code>import &quot;hashtable.5th&quot;
+import &quot;include/linear.5th&quot; &quot;include/trig.5th&quot;
+</code></pre>
+<p>Fifth prizes inline libraries (&quot;header-only libraries&quot; to C programmers)
+for their simplicity and optimizability.
+(Naturally, linkable libraries will also provide &quot;definition&quot; files requiring importing.)</p>
+<p><code>import</code> statements may include an identifier,
+placing all identifiers in those files into the given namespace.</p>
+<pre><code>import &quot;linearalgebra.5th&quot; &quot;trigonometry.5th&quot; math
+
+lit tau = 2 * math.pi
+</code></pre>
+<p>Once a file has been imported, subsequent imports are silently ignored.
+To enable them, use <code>_</code> or a different identifier.</p>
+<h2>Builtins</h2>
+<p>C programmers are likely used to writing preprocessor macros like
+<code>#define max( a, b ) ((a)&gt;(b)?(a):(b))</code> or using function-like operators
+like <code>sizeof</code>. Although it lacks a standard library, Fifth provides
+many of these features through builtins -- pseudo-functions implemented
+by the compiler.</p>
+<p><code>max</code> and <code>min</code> take any number of arguments of types <code>nat</code>, <code>int</code>, or <code>lit</code>,
+and return the maximum and minimum of the values, respectively.</p>
+<pre><code>max( 1, 3, 5 ) ⟷ 5
+min( 1, 3, 5 ) ⟷ 1
+</code></pre>
+<p><code>max</code> and <code>min</code> may also accept one argument of type <code>type</code>,
+returning the maximum and minimum value expressable by that type.</p>
+<pre><code>max( nat8 ) ⟷ 255
+min( int16 ) ⟷ -32768
+</code></pre>
+<p><code>abs</code> takes one argument of types <code>nat</code>, <code>int</code>, or <code>lit</code>,
+and returns its absolute value.</p>
+<pre><code>abs( -5 ) ⟷ 5
+</code></pre>
+<p><code>sign</code> takes one argument of types <code>nat</code>, <code>int</code>, or <code>lit</code>,
+and returns <code>-1</code> if it's less than zero, <code>1</code> if it's greater than zero,
+or <code>0</code> otherwise.</p>
+<pre><code>sign( -5 ) ⟷ -1
+sign( 0 ) ⟷ 0
+sign( 5 ) ⟷ 1
+</code></pre>
+<p>The following static builtins are also provided.</p>
+<p><code>size</code> takes one argument of any type.
+If it's a nonstatic type, it returns the width, in bytes, of the argument's type.
+If it's the type <code>type</code>, it returns the width, in bytes, of the argument.
+Otherwise, it returns 1.</p>
+<pre><code>size( int64( 5 ) ) ⟷ 8
+size( nat32 ) ⟷ 4
+size( 5 ) ⟷ 1
+</code></pre>
+<p><code>type</code> takes one argument of any type, and returns its type.</p>
+<pre><code>type( 5 ) ⟷ lit
+type( false ) ⟷ bool
+type( nat8( 0 ) ) ⟷ nat8
+</code></pre>
+<p><code>creak</code> and <code>croak</code> take zero or two arguments of type <code>static nat8 ptr</code> and <code>nat</code>.
+When encountered by the compiler (e.g. in the taken branch of a static <code>if</code> statement),
+they creak and croak, respectively, displaying their arguments as text.</p>
+<pre><code>croak()
+creak( &quot;Warning! 64-bit support is experimental!&quot; )
+croak( &quot;Target must support RV32IMAC&quot; )
+</code></pre>
+<p><code>defined</code> takes one argument of &quot;type&quot; identifier.
+It returns <code>true</code> if the identifier is defined in the current scope, or <code>false</code> otherwise.</p>
+<pre><code>defined( env ) ⟷ true
+defined( env.debug ) ⟷ true
+defined( true ) ⟷ true
+defined( defined ) ⟷ true
+</code></pre>
+<p>TODO: add these builtins:</p>
+<p><code>pow</code>
+<code>root</code>
+<code>log</code></p>
+<p><code>mean</code>
+<code>hypot</code></p>
+<p><code>clamp</code>
+<code>lerp</code></p>
+<p><code>gcd</code>
+<code>lcm</code></p>
+<p><code>roundup</code>
+<code>rounddown</code>
+<code>roundto</code>
+<code>roundfrom</code></p>
+<p><code>embed</code></p>
+<h2>Assertions</h2>
+<p>Assertions are expressed with the <code>assert</code> keyword, followed by a boolean expression.</p>
+<pre><code>assert v == 5
+</code></pre>
+<p>When <code>env.debug</code> is <code>true</code>, assertion conditions are checked when reached at runtime.
+If they fail, the program should emit some sort of error and call <code>abort</code>.</p>
+<p>When <code>env.debug</code> is <code>false</code>, the behavior of a program failing an assertion is undefined.
+The compiler is free to assume the assertion condition is always true, and optimize accordingly.</p>
+<p>TODO: actually, a conforming implementation can ignore assertions</p>
+<p><code>assert</code> may be qualified as static with the <code>static</code> keyword.
+A static assertion is evaluated at compile time;
+if it fails, or can't be evaluated, the assertion croaks and compilation halts.
+It may be lowered as follows:</p>
+<pre><code>static assert x ⟷ static if not x: croak()
+</code></pre>
+<p>Perhaps one of Fifth's most powerful (and hardest to implement) features are type assertions,
+which allow for the creation of new types with arbitrary undefined behaviors.</p>
+<pre><code>type nat4 = nat8 assert nat4 &lt; 16
+type even = nat assert even % 2 == 0
+type prime = nat assert isprime( prime )
+</code></pre>
+<p><code>expect</code> is <code>assert</code>'s younger sibling.
+It lacks any semantic effect, but might be useful for branch prediction.
+The <code>&lt;hot&gt;</code> and <code>&lt;cold&gt;</code> attributes may be used to specify exactly what
+to expect.</p>
+<pre><code>expect q &gt; 0
+&lt;hot&gt; expect r[] in 'a'..'z'
+&lt;cold cold&gt; expect t == 0x76C82BB1
+</code></pre>
+<p><code>static expect</code> creaks upon failure.</p>
+<h2>Inline Assembly</h2>
+<p>Here's where Fifth gets interesting.</p>
+<p>Fifth's inline assembly extension exposes
+every RISC-V register as a variable, and
+every instruction as a statement and a builtin.
+This is useful for emitting instructions
+the compiler is unable (or unwilling) to.
+It's also a great way to shoot yourself in the foot.</p>
+<pre><code>$fence.i
+
+$ebreak
+
+nat64 cycles = $rdcycle()
+
+r = $crc32.w( r )
+
+$sp &amp;= 0x12345678
+</code></pre>
+<p>While there are currently no concrete rules for exposing
+arbitrary instructions in Fifth, there are some general guidelines.
+Instructions using a destination register are typically exposed as builtins
+returning that value.
+Usually, R-type instructions will accept any
+expression, while I-types will demand a static second operand
+that can be expressed in twelve bits.</p>
+<pre><code>int rd, op1, op2 = _, 2, 3
+$add rd, op1, op2
+rd = $add( op1, op2 )
+
+$add  rd, op1, z + 375 - f()
+$addi rd, op1, 7 &lt;&lt; 3
+</code></pre>
+<p>Blocks can be qualified with <code>$</code>.
+Inside such a block, the <code>$</code> may be omitted from
+assembly identifiers.</p>
+<pre><code>$ {
+    TODO
+}
+</code></pre>
+<p>Qualifying a block with <em>two</em> <code>$</code>
+switches the syntax to that of assembly.
+(Currently, this is a slight tweak of GNU <code>as</code>.)</p>
+<pre><code>$$ {
+    TODO
+}
+</code></pre>
+<p>Finally, qualifying a block with <em>three</em> <code>$</code>
+additionally makes the assembly explicit; i.e.
+exactly that sequence of instructions will appear
+in the compiled binary.</p>
+<pre><code>$$$ {
+    TODO
+}
+</code></pre>
+<p>In any other context, assembly in Fifth is not explicit;
+the compiler is free to modify your code to achieve a
+semantically equivalent result.
+With that said, there are some caveats --
+for example, <code>$nop</code> is defined semantically
+to always emit <code>addi x0, x0, 0</code>,
+so it can be used reliably in delay loops.</p>
+<h2>Attributes</h2>
+<p>Attributes are qualifiers that appear in angle brackets.
+Many are at least partially redundant, but they're useful shortcuts
+for programmers (and implementors) who don't want to deal with
+complex assertions or compiler flags to obtain good performance.
+This is not an exhaustive list, although it might already be too long.</p>
+<pre><code>static		# &lt;static&gt; ⟷ static
+constant	# akin to C's `const`, mostly for pointers
+explicit	# akin to C's `volatile`
+
+aligned
+exclusive	# akin to C's `restrict`
+
+tense		# suppress linker relaxation
+
+hot		# optimize for speed, stackable
+cold		# optimize for size, stackable
+
+pure
+leaf
+unreturning	# akin to C's `_Noreturn`
+unreachable
+
+weak
+
+interrupt
+trap
+naked		# no prologue/epilogue
+
+inline		# ensure function/macro is inlined
+outline		# ensure function/macro uses stack
+
+deprecated	# creak when invoked
+</code></pre>
+<h2>Calling Convention</h2>
+<p>Given that Fifth's functions have features C lacks
+(and vice versa),
+a new calling convention might be in order.
+Basically the only addition is that registers <code>a0</code>-<code>a7</code> are used for
+return values as well as function arguments. On the other hand, the omissions
+could be substantial, including variadic functions, structs/unions as arguments,
+and soft floats. While these simplifications were a major goal of the language,
+it's inevitable that people will demand to call <code>printf</code> from Fifth,
+so they might end up as a future extension.</p>
+<h2>Style</h2>
+<p>Fifth is pretty flexible in its formatting.
+Here are two equally bad ways to write a factorial function:</p>
+<pre><code># Computes the factorial of n.
+#
+# @param number: The number that goes in the factorial.
+# @returns: The number that comes out of the factorial.
+#
+nat func computeFactorial( nat number ) {
+    nat result = 1;
+    for nat idx = 1; idx &lt; number; idx = idx + 1 {
+        result = result * idx;
+    }
+    return result;
+}
+</code></pre>
+<pre><code>#factorial function
+nat r=1 func f nat n: for; n&gt;1; n--; r*=n:;
+</code></pre>
+<p>Personally, I'd write it something like this.</p>
+<pre><code># Compute `n` factorial without recursion.
+# `n` must be &lt; 12 to avoid overflow.
+nat r func fact( nat n )
+{
+    assert n &lt; 12 # 13! &gt; max( nat )
+    for r = 1; n &gt; 1; n --: r *= n
+}
+</code></pre>
+<p>But I honestly think it's pretty foolish
+for anyone, most of all me, to
+mandate a uniform code format
+(as is in vogue these days).
+At most, I hope that Fifth's grammar is
+simple enough that organizations can write
+their own styleguides and formatters.</p>
+<h1>Example Code</h1>
+<p>Obviously, these are completely untested; most are adapted from C; some
+have small remnants of previous features (I still can't decide if lists should be totally static).
+Hopefully, though, they offer some insight into what ideomatic Fifth (could) look like.</p>
+<pre><code># rot13-encodes the null-terminated ASCII string pointed to by `s`.
+func rot13( nat8 ptr s )
+{
+    for ; s[] != '\0'; s ++
+    {
+        if s[] in 'a'..'m', 'A'..'M': s[] += 13
+        el s[] in 'n'..'z', 'N'..'Z': s[] -= 13
+    }
+}
+
+
+# Returns the sum of the digits of `n` in radix `base` (by default, decimal).
+( nat sum = 0 )func sumdigits( nat n, nat base = 10 )
+{
+    for ; n &gt; 0; n /= base: sum += n % base
+}
+
+
+# Possible feature: function state global variables namespaced to their function?
+nat8 ptr hexstr.s = make[ 9 ] '\0' # 9 bytes can store &quot;FFFFFFFF\0&quot;
+
+# Returns a pointer to a null-terminated ASCII string containing `n` written in hexadecimal.
+nat ptr func hexstr( nat n )
+{
+    for ; nat i in 7..-1..0; n &gt;&gt;= 4
+    {
+        if n &amp; 0xF &lt; 10: s[ i ] = '0' + n &amp; 0xF
+        el:              s[ i ] = 'A' + n &amp; 0xF - 10
+    }
+}
+
+
+# Luhn tests the `n`-digit credit card number in the ASCII string pointed to by `c`.
+bool passes luhn( nat8 ptr c, nat n )
+{
+    nat sum = 0
+    for nat i in n - 1..-1..0
+    {
+        nat digit = c[ i ] - '0'
+        if i % 2 != 0: sum += digit
+        el digit &lt; 5:  sum += 2 * digit
+        el:            sum += 2 * digit - 9
+    }
+    return sum % 10 == 0
+}
+
+
+# Insertion-sorts the array of `n` nats pointed to by `a`.
+func isort( nat ptr a, nat n )
+{
+    for nat i in 1...n
+    {
+        nat tmp, nat j = a[ i ], i
+        for ; j &gt; 0 and tmp &lt; a[ j - 1 ]; j --
+        {
+            a[ j ] = a[ j - 1 ]
+        }
+        a[ j ] = tmp
+    }
+}
+
+
+# Shellsorts the array of `n` nats pointed to by `a`.
+func shellsort( nat ptr a, nat n )
+{
+    for nat gap in 701, 301, 132, 57, 23, 10, 4, 1
+    {
+        # `for nat i in gap...n` isn't static enough
+        for nat i = gap; i &lt; n; i++
+        {
+            nat tmp, nat j = a[ i ], i
+            for ; j &gt;= gap and a[ j - gap ] &gt; tmp; j -= gap
+            {
+                a[ j ] = a[ j - gap ]
+            }
+            a[ j ] = tmp
+        }
+    }
+}
+</code></pre>
+</body>
+</html>
