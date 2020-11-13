@@ -108,6 +108,17 @@ characters are equivalent to lists of each character.
 '\r\n\0' ⟷ 0x0D, 0x0A, 0
 ```
 
+## Lists
+
+Lists are comma-separated sets of one or more values.
+```
+3, 4, 5
+-2, -2.1, -2.2, 'Q'
+0xB6
+```
+Lists are static; their size, and all of their elements, must be
+known at compile time.
+
 ## String Literals #
 
 String literals are a shorthand for allocating immutable UTF-8-encoded character strings.
@@ -124,24 +135,24 @@ Strings separated by whitespace catenate.
 ## Ranges
 
 Ranges are a useful shorthand for writing lists.
-`a .. b` denotes a list from `a` up to and including `b`.
-`a ... b` denotes a list from `a` up to and excluding `b`.
+`a .. b` denotes a list from `a` to (and including) `b`.
+`a ... b` denotes a list from `a` to (and excluding) `b`.
 `a .. i .. b` and `a ... i ... b` denote lists
 from `a` in steps of `i` to `b` inclusive or exclusive, respectively.
 ```
 0..5 ⟷ 0, 1, 2, 3, 4, 5
 0...5 ⟷ 0, 1, 2, 3, 4
+5..0 ⟷ 5, 4, 3, 2, 1, 0
 a...( a + 4 ) ⟷ a, a + 1, a + 2, a + 3
 0..1..5 ⟷ 0..5 ⟷ 0, 1, 2, 3, 4, 5
+5..-1..0 ⟷ 5..0 ⟷ 5, 4, 3, 2, 1, 0
 3..2..9.5 ⟷ 3, 5, 7, 9
 6...-0.5...4 ⟷ 6, 5.5, 5, 4.5
-5..0 ⟷ 
-1..4 ⟷ 
 ```
-In all cases, `a` and `b` may be nonstatic (TODO: this complicates things),
-but `i` must be static and nonzero.
-If `i` > 0 but `a` < `b` (or vice versa),
-the list is empty. (TODO: or should this be UB?)
+A range croaks if
+* `a`, `b`, or `i` are nonstatic
+* `i` is zero
+* `i` > 0 but `a` < `b`, or vice versa
 
 ## Operators
 Values are combined by operators to form expressions.
@@ -653,7 +664,7 @@ must be known statically, but allows using its memory at any subsequent
 point in the program.
 At global scope, `make` is implicitly static.
 
-TODO: possible name candidates: `make`, `mem`, `alloc`, `array`, `get`, etc.
+TODO: possible name candidates: `make`, `mem`, `alloc`, `array`, `get`, `loc`, etc.
 
 ## Unions
 
@@ -822,8 +833,6 @@ If they fail, the program should emit some sort of error and call `abort`.
 
 When `env.debug` is `false`, the behavior of a program failing an assertion is undefined.
 The compiler is free to assume the assertion condition is always true, and optimize accordingly.
-
-TODO: actually, a conforming implementation can ignore assertions
 
 `assert` may be qualified as static with the `static` keyword. 
 A static assertion is evaluated at compile time;
@@ -1013,8 +1022,7 @@ simple enough that organizations can write
 their own styleguides and formatters.
 
 # Example Code
-Obviously, these are completely untested; most are adapted from C; some
-have small remnants of previous features (I still can't decide if lists should be totally static).
+Obviously, these are completely untested; most are adapted from C.
 Hopefully, though, they offer some insight into what ideomatic Fifth (could) look like.
 
 ```
@@ -1042,7 +1050,7 @@ nat8 ptr hexstr.s = make[ 9 ] '\0' # 9 bytes can store "FFFFFFFF\0"
 # Returns a pointer to a null-terminated ASCII string containing `n` written in hexadecimal.
 nat ptr func hexstr( nat n )
 {
-	for ; nat i in 7..-1..0; n >>= 4
+	for nat i in 7..0; n >>= 4
 	{
 		if n & 0xF < 10: s[ i ] = '0' + n & 0xF
 		el:              s[ i ] = 'A' + n & 0xF - 10
@@ -1054,7 +1062,7 @@ nat ptr func hexstr( nat n )
 bool passes luhn( nat8 ptr c, nat n )
 {
 	nat sum = 0
-	for nat i in n - 1..-1..0
+	for nat i = n - 1; i >= 0; i--
 	{
 		nat digit = c[ i ] - '0'
 		if i % 2 != 0: sum += digit
@@ -1068,7 +1076,7 @@ bool passes luhn( nat8 ptr c, nat n )
 # Insertion-sorts the array of `n` nats pointed to by `a`.
 func isort( nat ptr a, nat n )
 {
-	for nat i in 1...n
+	for nat i = 1; i < n; i ++
 	{
 		nat tmp, nat j = a[ i ], i
 		for ; j > 0 and tmp < a[ j - 1 ]; j --
@@ -1085,7 +1093,6 @@ func shellsort( nat ptr a, nat n )
 {
 	for nat gap in 701, 301, 132, 57, 23, 10, 4, 1
 	{
-		# `for nat i in gap...n` isn't static enough
 		for nat i = gap; i < n; i++
 		{
 			nat tmp, nat j = a[ i ], i
