@@ -8,19 +8,19 @@
 <body>
 <p><img src="fifth.png" alt=""></p>
 <h2>An (extremely brief, pre-alpha) overview of Fifth.</h2>
-<p>Fifth is a programming language. It began as a thought experiment
+<p>Fifth is a programming language. It started as a thought experiment
 to design a language faster than C, adopting RISC-V as a sole target mainly
-for the benefits of eschewing portability. It gradually became a
+for the benefits of eschewing portability. It gradually became a kind of
 &quot;RISC-V swiss army knife&quot;, mired in architecture-specific behavior
-that has now been relegated entirely to the inline assembly extension.
+(all of which has since been relegated to the inline assembly extension).
 At present, it's still a long way from being implemented,
-but I think it's emerged as a modern, simple, and powerful language
+but I think it's emerged as a simple and powerful language
 for embedded and high-performance disciplines.</p>
 <p>A formal standard is forthcoming, but progress has been frustratingly slow.
 In the meantime, this document offers a brief outline of the language,
 with an emphasis on its novel features and improvements over C.
 Until then, syntactic and semantic ambiguities might exist; expect
-novel features to disappear in the future.</p>
+novelties to disappear in the future.</p>
 <p>Like the standard, this document uses the lowering notation <code>abc ⟷ xyz</code>
 to indicate that two portions of code <code>abc</code> and <code>xyz</code> are interchangable.</p>
 <p>Some terminology:</p>
@@ -95,6 +95,14 @@ characters are equivalent to lists of each character.</p>
 <pre><code>'aeiou' ⟷ 'a', 'e', 'i', 'o', 'u'
 '\r\n\0' ⟷ 0x0D, 0x0A, 0
 </code></pre>
+<h2>Lists</h2>
+<p>Lists are comma-separated sets of one or more values.</p>
+<pre><code>3, 4, 5
+-2, -2.1, -2.2, 'Q'
+0xB6
+</code></pre>
+<p>Lists are static; their size, and all of their elements, must be
+known at compile time.</p>
 <h2>String Literals</h2>
 <p>String literals are a shorthand for allocating immutable UTF-8-encoded character strings.
 They consist of one or more characters enclosed in double quotes.
@@ -107,23 +115,25 @@ Unlike C, strings are <em>not</em> implicitly null-terminated.</p>
 Strings separated by whitespace catenate.</p>
 <h2>Ranges</h2>
 <p>Ranges are a useful shorthand for writing lists.
-<code>a .. b</code> denotes a list from <code>a</code> up to and including <code>b</code>.
-<code>a ... b</code> denotes a list from <code>a</code> up to and excluding <code>b</code>.
+<code>a .. b</code> denotes a list from <code>a</code> to (and including) <code>b</code>.
+<code>a ... b</code> denotes a list from <code>a</code> to (and excluding) <code>b</code>.
 <code>a .. i .. b</code> and <code>a ... i ... b</code> denote lists
 from <code>a</code> in steps of <code>i</code> to <code>b</code> inclusive or exclusive, respectively.</p>
 <pre><code>0..5 ⟷ 0, 1, 2, 3, 4, 5
 0...5 ⟷ 0, 1, 2, 3, 4
+5..0 ⟷ 5, 4, 3, 2, 1, 0
 a...( a + 4 ) ⟷ a, a + 1, a + 2, a + 3
 0..1..5 ⟷ 0..5 ⟷ 0, 1, 2, 3, 4, 5
+5..-1..0 ⟷ 5..0 ⟷ 5, 4, 3, 2, 1, 0
 3..2..9.5 ⟷ 3, 5, 7, 9
 6...-0.5...4 ⟷ 6, 5.5, 5, 4.5
-5..0 ⟷ 
-1..4 ⟷ 
 </code></pre>
-<p>In all cases, <code>a</code> and <code>b</code> may be nonstatic (TODO: this complicates things),
-but <code>i</code> must be static and nonzero.
-If <code>i</code> &gt; 0 but <code>a</code> &lt; <code>b</code> (or vice versa),
-the list is empty. (TODO: or should this be UB?)</p>
+<p>A range croaks if</p>
+<ul>
+<li><code>a</code>, <code>b</code>, or <code>i</code> are nonstatic</li>
+<li><code>i</code> is zero</li>
+<li><code>i</code> &gt; 0 but <code>a</code> &lt; <code>b</code>, or vice versa</li>
+</ul>
 <h2>Operators</h2>
 <p>Values are combined by operators to form expressions.</p>
 <table>
@@ -541,7 +551,7 @@ on the stack, on the heap, etc.).</p>
 must be known statically, but allows using its memory at any subsequent
 point in the program.
 At global scope, <code>make</code> is implicitly static.</p>
-<p>TODO: possible name candidates: <code>make</code>, <code>mem</code>, <code>alloc</code>, <code>array</code>, <code>get</code>, etc.</p>
+<p>TODO: possible name candidates: <code>make</code>, <code>mem</code>, <code>alloc</code>, <code>array</code>, <code>get</code>, <code>loc</code>, etc.</p>
 <h2>Unions</h2>
 <p>Values that need to be descriptively cast often might benefit from
 being declared with multiple types. Such a value has the width of its
@@ -587,8 +597,8 @@ placing all identifiers in those files into the given namespace.</p>
 
 lit tau = 2 * math.pi
 </code></pre>
-<p>Once a file has been imported, subsequent imports are silently ignored.
-To enable them, use <code>_</code> or a different identifier.</p>
+<p>Once a file has been imported, subsequent imports are with the same name are silently ignored.
+To preserve them, use <code>_</code> or a different identifier.</p>
 <h2>Builtins</h2>
 <p>C programmers are likely used to writing preprocessor macros like
 <code>#define max( a, b ) ((a)&gt;(b)?(a):(b))</code> or using function-like operators
@@ -667,7 +677,6 @@ defined( defined ) ⟷ true
 If they fail, the program should emit some sort of error and call <code>abort</code>.</p>
 <p>When <code>env.debug</code> is <code>false</code>, the behavior of a program failing an assertion is undefined.
 The compiler is free to assume the assertion condition is always true, and optimize accordingly.</p>
-<p>TODO: actually, a conforming implementation can ignore assertions</p>
 <p><code>assert</code> may be qualified as static with the <code>static</code> keyword.
 A static assertion is evaluated at compile time;
 if it fails, or can't be evaluated, the assertion croaks and compilation halts.
@@ -813,16 +822,7 @@ nat func computeFactorial( nat number ) {
 <pre><code>#factorial function
 nat r=1 func f nat n: for; n&gt;1; n--; r*=n:;
 </code></pre>
-<p>Personally, I'd write it something like this.</p>
-<pre><code># Compute `n` factorial without recursion.
-# `n` must be &lt; 12 to avoid overflow.
-nat r func fact( nat n )
-{
-    assert n &lt; 12 # 13! &gt; max( nat )
-    for r = 1; n &gt; 1; n --: r *= n
-}
-</code></pre>
-<p>But I honestly think it's pretty foolish
+<p>As bad as these are, I honestly think it's pretty foolish
 for anyone, most of all me, to
 mandate a uniform code format
 (as is in vogue these days).
@@ -830,8 +830,7 @@ At most, I hope that Fifth's grammar is
 simple enough that organizations can write
 their own styleguides and formatters.</p>
 <h1>Example Code</h1>
-<p>Obviously, these are completely untested; most are adapted from C; some
-have small remnants of previous features (I still can't decide if lists should be totally static).
+<p>Obviously, these are completely untested; most are adapted from C.
 Hopefully, though, they offer some insight into what ideomatic Fifth (could) look like.</p>
 <pre><code># rot13-encodes the null-terminated ASCII string pointed to by `s`.
 func rot13( nat8 ptr s )
@@ -857,7 +856,7 @@ nat8 ptr hexstr.s = make[ 9 ] '\0' # 9 bytes can store &quot;FFFFFFFF\0&quot;
 # Returns a pointer to a null-terminated ASCII string containing `n` written in hexadecimal.
 nat ptr func hexstr( nat n )
 {
-    for ; nat i in 7..-1..0; n &gt;&gt;= 4
+    for nat i in 7..0; n &gt;&gt;= 4
     {
         if n &amp; 0xF &lt; 10: s[ i ] = '0' + n &amp; 0xF
         el:              s[ i ] = 'A' + n &amp; 0xF - 10
@@ -869,7 +868,7 @@ nat ptr func hexstr( nat n )
 bool passes luhn( nat8 ptr c, nat n )
 {
     nat sum = 0
-    for nat i in n - 1..-1..0
+    for nat i = n - 1; i &gt;= 0; i--
     {
         nat digit = c[ i ] - '0'
         if i % 2 != 0: sum += digit
@@ -883,7 +882,7 @@ bool passes luhn( nat8 ptr c, nat n )
 # Insertion-sorts the array of `n` nats pointed to by `a`.
 func isort( nat ptr a, nat n )
 {
-    for nat i in 1...n
+    for nat i = 1; i &lt; n; i ++
     {
         nat tmp, nat j = a[ i ], i
         for ; j &gt; 0 and tmp &lt; a[ j - 1 ]; j --
@@ -900,7 +899,6 @@ func shellsort( nat ptr a, nat n )
 {
     for nat gap in 701, 301, 132, 57, 23, 10, 4, 1
     {
-        # `for nat i in gap...n` isn't static enough
         for nat i = gap; i &lt; n; i++
         {
             nat tmp, nat j = a[ i ], i

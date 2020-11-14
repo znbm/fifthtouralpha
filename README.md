@@ -2,20 +2,20 @@
 
 ## An (extremely brief, pre-alpha) overview of Fifth. #
 
-Fifth is a programming language. It began as a thought experiment
+Fifth is a programming language. It started as a thought experiment
 to design a language faster than C, adopting RISC-V as a sole target mainly
-for the benefits of eschewing portability. It gradually became a
+for the benefits of eschewing portability. It gradually became a kind of
 "RISC-V swiss army knife", mired in architecture-specific behavior
-that has now been relegated entirely to the inline assembly extension.
+(all of which has since been relegated to the inline assembly extension).
 At present, it's still a long way from being implemented,
-but I think it's emerged as a modern, simple, and powerful language
+but I think it's emerged as a simple and powerful language
 for embedded and high-performance disciplines.
 
 A formal standard is forthcoming, but progress has been frustratingly slow.
 In the meantime, this document offers a brief outline of the language,
 with an emphasis on its novel features and improvements over C.
 Until then, syntactic and semantic ambiguities might exist; expect
-novel features to disappear in the future.
+novelties to disappear in the future.
 
 Like the standard, this document uses the lowering notation `abc ⟷ xyz`
 to indicate that two portions of code `abc` and `xyz` are interchangable.
@@ -724,8 +724,8 @@ import "linearalgebra.5th" "trigonometry.5th" math
 
 lit tau = 2 * math.pi
 ```
-Once a file has been imported, subsequent imports are silently ignored.
-To enable them, use `_` or a different identifier.
+Once a file has been imported, subsequent imports are with the same name are silently ignored.
+To preserve them, use `_` or a different identifier.
 
 ## Builtins
 
@@ -1003,17 +1003,7 @@ nat func computeFactorial( nat number ) {
 #factorial function
 nat r=1 func f nat n: for; n>1; n--; r*=n:;
 ```
-Personally, I'd write it something like this.
-```
-# Compute `n` factorial without recursion.
-# `n` must be < 12 to avoid overflow.
-nat r func fact( nat n )
-{
-	assert n < 12 # 13! > max( nat )
-	for r = 1; n > 1; n --: r *= n
-}
-```
-But I honestly think it's pretty foolish
+As bad as these are, I honestly think it's pretty foolish
 for anyone, most of all me, to
 mandate a uniform code format
 (as is in vogue these days).
