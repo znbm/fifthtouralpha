@@ -47,17 +47,16 @@ and continue until the end of the line.</p>
 however, <code>lit</code> is an implicitly static type, so all are resolved at
 compile time. <code>lit</code>s cast implicitly to any other type.</p>
 <p><code>nat</code> and <code>int</code> are unsigned and two's complement signed integers, respectively.
-Their widths are equal to <code>XLEN</code>,
-i.e. the number of bits in an address on the target machine.
+Their widths are equal to the number of bits in an address on the target machine.
 Many of their behaviors -- overflow, division by zero, etc. -- are undefined,
-at least when using the typical operators.
+at least without invoking inline assembly.
 Fixed-width variants -- <code>nat8</code>, <code>int64</code>, etc. -- are also available.</p>
 <p><code>bool</code> is a boolean type of unspecified width defined only for the values <code>0</code> and <code>1</code>.
 <code>bool</code>s are used in conditional expressions,
 and are usually obtained from comparison operators.
 <code>true</code> and <code>false</code> are reserved words of type <code>bool</code>
 with values <code>1</code> and <code>0</code>, respectively.</p>
-<p>Later, we'll see a few other types, including pointers.
+<p>Other types are covered below, including pointers.
 Floating point types and operations are defined in a separate extension.</p>
 <h2>Numeric Literals</h2>
 <p>Numeric literals represent fixed, immediate numeric values.
@@ -334,7 +333,7 @@ el
 </code></pre>
 <p>Finally, conditionals can be evaluated at compile time with the <code>static</code> qualifier.
 Conditionals are allowed at global scope, where they are implicitly static.</p>
-<pre><code>static if 'A' !in env.extensions: useatomics = false
+<pre><code>static if 'F' !in env.extensions: usefloat = false
 </code></pre>
 <h2>Loops</h2>
 <p><code>for</code> is Fifth's looping construct.</p>
@@ -555,16 +554,39 @@ At global scope, <code>make</code> is implicitly static.</p>
 <h2>Unions</h2>
 <p>Values that need to be descriptively cast often might benefit from
 being declared with multiple types. Such a value has the width of its
-widest type, but semantics according to the leftmost type unless descriptively cast.</p>
+widest type, but semantics according to the leftmost possible type unless descriptively cast.</p>
 <pre><code>nat or int b = 5
 
 int8 or int16 or int32 b = 257
 
-( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4 
+( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4
 </code></pre>
-<p>TODO: resolve lots of pitfalls!</p>
+<h2>More Lists</h2>
+<pre><code>list L = 1 ⟷ any list L = 1
+
+nat or int list r = 1, 2, 3, -1, -2, -3
+</code></pre>
+<p>Specific elements can be isolated with the <code>of</code> operator.</p>
+<pre><code>(1).0 ⟷ 1
+(1, 2, 3, 4, 5)[0, 2, 4] ⟷ 1, 3, 5
+</code></pre>
+<p>Statically, lists can be modified and appended to without bound.</p>
+<pre><code>list T = 1, 2, 3, 4, 5
+T.0 = 10
+T[ 1..4 ] = 9..6
+T( 5, 6 ) = 5, 4
+T ⟷ 10, 9, 8, 7, 6, 5, 4
+</code></pre>
+<h2>Namespaces</h2>
+<p>TODO</p>
 <h2>env</h2>
-<p>TODO: <code>env</code> has a lot of fields</p>
+<p><code>env</code> is a predeclared pseudo-list containing information about the compiler and target.
+Some fields are:</p>
+<ul>
+<li><code>env.debug</code> -- a boolean; <code>true</code> if compiling in debug mode</li>
+<li><code>env.extensions</code> -- a list of literals ('Q', 'F', etc.)</li>
+<li><code>env.arch</code> --</li>
+</ul>
 <h2>Customs</h2>
 <p>By default, functions and global variables have internal linkage --
 that is, they're invisible outside of the current file.
@@ -705,7 +727,9 @@ every RISC-V register as a variable, and
 every instruction as a statement and a builtin.
 This is useful for emitting instructions
 the compiler is unable (or unwilling) to.
-It's also a great way to shoot yourself in the foot.</p>
+It also allows one to obtain better-defined
+(i.e. implementation-defined) behavior,
+like overflowing arithmetic.</p>
 <pre><code>$fence.i
 
 $ebreak
@@ -715,6 +739,8 @@ nat64 cycles = $rdcycle()
 r = $crc32.w( r )
 
 $sp &amp;= 0x12345678
+
+$my_custom_instruction y, 0x35, $tp, 71.00
 </code></pre>
 <p>While there are currently no concrete rules for exposing
 arbitrary instructions in Fifth, there are some general guidelines.
@@ -732,14 +758,14 @@ $addi rd, op1, 7 &lt;&lt; 3
 </code></pre>
 <p>Blocks can be qualified with <code>$</code>.
 Inside such a block, the <code>$</code> may be omitted from
-assembly identifiers.</p>
+assembly identifiers (unless they conflict with existing ones).</p>
 <pre><code>$ {
     TODO
 }
 </code></pre>
-<p>Qualifying a block with <em>two</em> <code>$</code>
-switches the syntax to that of assembly.
-(Currently, this is a slight tweak of GNU <code>as</code>.)</p>
+<p>Qualifying a block with <em>two</em> <code>$</code> further
+allows only asm statements with static expressions as operands.
+(Notice how similar this is to e.g. GNU <code>as</code>.)</p>
 <pre><code>$$ {
     TODO
 }
@@ -747,18 +773,25 @@ switches the syntax to that of assembly.
 <p>Finally, qualifying a block with <em>three</em> <code>$</code>
 additionally makes the assembly explicit; i.e.
 exactly that sequence of instructions will appear
-in the compiled binary.</p>
-<pre><code>$$$ {
-    TODO
-}
-</code></pre>
-<p>In any other context, assembly in Fifth is not explicit;
+in the compiled binary.
+In any other context, assembly in Fifth is not explicit;
 the compiler is free to modify your code to achieve a
 semantically equivalent result.
 With that said, there are some caveats --
 for example, <code>$nop</code> is defined semantically
 to always emit <code>addi x0, x0, 0</code>,
 so it can be used reliably in delay loops.</p>
+<h2>Potential Extensions</h2>
+<ul>
+<li>'Q' fixed point extension</li>
+<li>'F' floating point extension</li>
+<li>'B' bitfield extension -- allows exposing values as <code>bool ptr</code>s with <code>.bits</code></li>
+<li>'A' atomics extension -- adds <code>atomic</code> qualifier for statements and blocks</li>
+<li>'M' math extension? -- adds typical trig/linear routines,
+crucially with a precision parameter</li>
+<li>'L' nonstatic lists extension -- far terser, cleaner programs
+at the expense of compiler complexity</li>
+</ul>
 <h2>Attributes</h2>
 <p>Attributes are qualifiers that appear in angle brackets.
 Many are at least partially redundant, but they're useful shortcuts
@@ -850,8 +883,7 @@ func rot13( nat8 ptr s )
 }
 
 
-# Possible feature: function state global variables namespaced to their function?
-nat8 ptr hexstr.s = make[ 9 ] '\0' # 9 bytes can store &quot;FFFFFFFF\0&quot;
+nat8 ptr s = make[ 9 ] '\0' # 9 bytes can store &quot;FFFFFFFF\0&quot;
 
 # Returns a pointer to a null-terminated ASCII string containing `n` written in hexadecimal.
 nat ptr func hexstr( nat n )
@@ -911,5 +943,12 @@ func shellsort( nat ptr a, nat n )
     }
 }
 </code></pre>
+<h2>Misc. Ideas</h2>
+<ul>
+<li><code>is</code> and <code>!is</code> operator: <code>bool same = p[ 0..9 ] is q[ 0..9 ]</code></li>
+<li>cleaner, more unified namespace concept</li>
+<li>namespace variables to functions, e.g. to achieve C's <code>static</code></li>
+<li>functions declarations use <code>=</code> like everything else; <code>{}</code> are &quot;function literals&quot; (?); allows for anonymous functions?</li>
+</ul>
 </body>
 </html>

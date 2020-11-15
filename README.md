@@ -50,10 +50,9 @@ however, `lit` is an implicitly static type, so all are resolved at
 compile time. `lit`s cast implicitly to any other type.
 
 `nat` and `int` are unsigned and two's complement signed integers, respectively. 
-Their widths are equal to `XLEN`,
-i.e. the number of bits in an address on the target machine.
+Their widths are equal to the number of bits in an address on the target machine.
 Many of their behaviors -- overflow, division by zero, etc. -- are undefined,
-at least when using the typical operators.
+at least without invoking inline assembly.
 Fixed-width variants -- `nat8`, `int64`, etc. -- are also available.
 
 `bool` is a boolean type of unspecified width defined only for the values `0` and `1`.
@@ -62,7 +61,7 @@ and are usually obtained from comparison operators.
 `true` and `false` are reserved words of type `bool` 
 with values `1` and `0`, respectively.
 
-Later, we'll see a few other types, including pointers.
+Other types are covered below, including pointers.
 Floating point types and operations are defined in a separate extension.
 
 ## Numeric Literals
@@ -397,7 +396,7 @@ el
 Finally, conditionals can be evaluated at compile time with the `static` qualifier.
 Conditionals are allowed at global scope, where they are implicitly static.
 ```
-static if 'A' !in env.extensions: useatomics = false
+static if 'F' !in env.extensions: usefloat = false
 ```
 
 ## Loops
@@ -670,19 +669,47 @@ TODO: possible name candidates: `make`, `mem`, `alloc`, `array`, `get`, `loc`, e
 
 Values that need to be descriptively cast often might benefit from
 being declared with multiple types. Such a value has the width of its
-widest type, but semantics according to the leftmost type unless descriptively cast.
+widest type, but semantics according to the leftmost possible type unless descriptively cast.
 ```
 nat or int b = 5
 
 int8 or int16 or int32 b = 257
 
-( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4 
+( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4
 ```
-TODO: resolve lots of pitfalls!
+
+## More Lists
+
+```
+list L = 1 ⟷ any list L = 1
+
+nat or int list r = 1, 2, 3, -1, -2, -3
+```
+Specific elements can be isolated with the `of` operator.
+```
+(1).0 ⟷ 1
+(1, 2, 3, 4, 5)[0, 2, 4] ⟷ 1, 3, 5
+```
+Statically, lists can be modified and appended to without bound.
+```
+list T = 1, 2, 3, 4, 5
+T.0 = 10
+T[ 1..4 ] = 9..6
+T( 5, 6 ) = 5, 4
+T ⟷ 10, 9, 8, 7, 6, 5, 4
+```
+
+## Namespaces
+
+TODO
 
 ## env
 
-TODO: `env` has a lot of fields
+`env` is a predeclared pseudo-list containing information about the compiler and target.
+Some fields are:
+* `env.debug` -- a boolean; `true` if compiling in debug mode
+* `env.extensions` -- a list of literals ('Q', 'F', etc.)
+* `env.arch` -- 
 
 ## Customs
 
@@ -869,7 +896,9 @@ every RISC-V register as a variable, and
 every instruction as a statement and a builtin.
 This is useful for emitting instructions
 the compiler is unable (or unwilling) to.
-It's also a great way to shoot yourself in the foot.
+It also allows one to obtain better-defined
+(i.e. implementation-defined) behavior, 
+like overflowing arithmetic.
 ```
 $fence.i
 
@@ -880,6 +909,8 @@ nat64 cycles = $rdcycle()
 r = $crc32.w( r )
 
 $sp &= 0x12345678
+
+$my_custom_instruction y, 0x35, $tp, 71.00
 ```
 While there are currently no concrete rules for exposing
 arbitrary instructions in Fifth, there are some general guidelines.
@@ -899,15 +930,15 @@ $addi rd, op1, 7 << 3
 
 Blocks can be qualified with `$`.
 Inside such a block, the `$` may be omitted from
-assembly identifiers.
+assembly identifiers (unless they conflict with existing ones).
 ```
 $ {
 	TODO
 }
 ```
-Qualifying a block with *two* `$`
-switches the syntax to that of assembly.
-(Currently, this is a slight tweak of GNU `as`.)
+Qualifying a block with *two* `$` further
+allows only asm statements with static expressions as operands.
+(Notice how similar this is to e.g. GNU `as`.)
 ```
 $$ {
 	TODO
@@ -917,11 +948,6 @@ Finally, qualifying a block with *three* `$`
 additionally makes the assembly explicit; i.e.
 exactly that sequence of instructions will appear
 in the compiled binary.
-```
-$$$ {
-	TODO
-}
-```
 In any other context, assembly in Fifth is not explicit;
 the compiler is free to modify your code to achieve a
 semantically equivalent result.
@@ -929,6 +955,17 @@ With that said, there are some caveats --
 for example, `$nop` is defined semantically
 to always emit `addi x0, x0, 0`, 
 so it can be used reliably in delay loops.
+
+## Potential Extensions
+
+* 'Q' fixed point extension
+* 'F' floating point extension
+* 'B' bitfield extension -- allows exposing values as `bool ptr`s with `.bits`
+* 'A' atomics extension -- adds `atomic` qualifier for statements and blocks
+* 'M' math extension? -- adds typical trig/linear routines,
+	crucially with a precision parameter
+* 'L' nonstatic lists extension -- far terser, cleaner programs
+	at the expense of compiler complexity
 
 ## Attributes
 
@@ -1034,8 +1071,7 @@ func rot13( nat8 ptr s )
 }
 
 
-# Possible feature: function state global variables namespaced to their function?
-nat8 ptr hexstr.s = make[ 9 ] '\0' # 9 bytes can store "FFFFFFFF\0"
+nat8 ptr s = make[ 9 ] '\0' # 9 bytes can store "FFFFFFFF\0"
 
 # Returns a pointer to a null-terminated ASCII string containing `n` written in hexadecimal.
 nat ptr func hexstr( nat n )
@@ -1095,3 +1131,10 @@ func shellsort( nat ptr a, nat n )
 	}
 }
 ```
+
+## Misc. Ideas
+
+* `is` and `!is` operator: `bool same = p[ 0..9 ] is q[ 0..9 ]`
+* cleaner, more unified namespace concept
+* namespace variables to functions, e.g. to achieve C's `static`
+* functions declarations use `=` like everything else; `{}` are "function literals" (?); allows for anonymous functions?
