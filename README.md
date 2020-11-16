@@ -42,7 +42,7 @@ and continue until the end of the line.
 
 ## Types
 
-Fifth is statically and (somewhat) strongly typed.
+Fifth is statically and strongly typed.
 
 `lit` is the type of literals.
 `lit` operations are performed at arbitrary precision;
@@ -229,10 +229,6 @@ The unary `-` operator negates its operand.
 ## Bitwise Operators #
 
 The unary operator `!` inverts the bits of its operand.
-```
-!0b00110110.nat8 ⟷ 0b11001001.nat8
-```
-
 The `&`, `|`, and `^` operators compute the bitwise
 and, or and exclusive or of their operands, respectively.
 
@@ -247,7 +243,7 @@ a ^! b ⟷ a ^ !( b )
 `<<` performs a leftward logical bit shift.
 `>>` performs a rightward arithmetic bit shift if its
 first operand is of type `int`, or a logical shift otherwise.
-Shifts of more than 8 * the size of the righthand operand are undefined.
+Shifts of more than the number of bits in the lefthand operand are undefined.
 
 Bitfields could be the subject of a future extension.
 

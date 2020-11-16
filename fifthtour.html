@@ -41,7 +41,7 @@ and continue until the end of the line.</p>
 <pre><code> # This is a comment.
 </code></pre>
 <h2>Types</h2>
-<p>Fifth is statically and (somewhat) strongly typed.</p>
+<p>Fifth is statically and strongly typed.</p>
 <p><code>lit</code> is the type of literals.
 <code>lit</code> operations are performed at arbitrary precision;
 however, <code>lit</code> is an implicitly static type, so all are resolved at
@@ -197,10 +197,8 @@ The unary <code>-</code> operator negates its operand.</p>
 9 % -2 ⟷ --1
 </code></pre>
 <h2>Bitwise Operators</h2>
-<p>The unary operator <code>!</code> inverts the bits of its operand.</p>
-<pre><code>!0b00110110.nat8 ⟷ 0b11001001.nat8
-</code></pre>
-<p>The <code>&amp;</code>, <code>|</code>, and <code>^</code> operators compute the bitwise
+<p>The unary operator <code>!</code> inverts the bits of its operand.
+The <code>&amp;</code>, <code>|</code>, and <code>^</code> operators compute the bitwise
 and, or and exclusive or of their operands, respectively.</p>
 <p>The <code>&amp;!</code>, <code>|!</code>, and <code>^!</code> operators are also provided
 as a shorthand.</p>
@@ -211,7 +209,7 @@ a ^! b ⟷ a ^ !( b )
 <p><code>&lt;&lt;</code> performs a leftward logical bit shift.
 <code>&gt;&gt;</code> performs a rightward arithmetic bit shift if its
 first operand is of type <code>int</code>, or a logical shift otherwise.
-Shifts of more than 8 * the size of the righthand operand are undefined.</p>
+Shifts of more than the number of bits in the lefthand operand are undefined.</p>
 <p>Bitfields could be the subject of a future extension.</p>
 <h2>Comparison Operators</h2>
 <p>The binary operators <code>==</code>, <code>!=</code>, <code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, and <code>&lt;=</code>
