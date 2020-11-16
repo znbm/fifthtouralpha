@@ -47,7 +47,7 @@ and continue until the end of the line.</p>
 however, <code>lit</code> is an implicitly static type, so all are resolved at
 compile time. <code>lit</code>s cast implicitly to any other type.</p>
 <p><code>nat</code> and <code>int</code> are unsigned and two's complement signed integers, respectively.
-Their widths are equal to the number of bits in an address on the target machine.
+Their widths are equal to that of a register on the target machine.
 Many of their behaviors -- overflow, division by zero, etc. -- are undefined,
 at least without invoking inline assembly.
 Fixed-width variants -- <code>nat8</code>, <code>int64</code>, etc. -- are also available.</p>
@@ -197,8 +197,9 @@ The unary <code>-</code> operator negates its operand.</p>
 9 % -2 ⟷ --1
 </code></pre>
 <h2>Bitwise Operators</h2>
-<p>TODO: examples that don't depict <code>lit</code> semantics</p>
 <p>The unary operator <code>!</code> inverts the bits of its operand.</p>
+<pre><code>!0b00110110.nat8 ⟷ 0b11001001.nat8
+</code></pre>
 <p>The <code>&amp;</code>, <code>|</code>, and <code>^</code> operators compute the bitwise
 and, or and exclusive or of their operands, respectively.</p>
 <p>The <code>&amp;!</code>, <code>|!</code>, and <code>^!</code> operators are also provided
@@ -223,7 +224,7 @@ compare their operands and yield a result of type <code>bool</code>.</p>
 is equal or nonequal to any member of the righthand list.</p>
 <pre><code>5 in 3, 4, 5 ⟷ true
 5 !in 1...9 ⟷ false
-5 in ⟷ false
+5 in 0.9...9.9 ⟷ false
 </code></pre>
 <p>When operating on boolean values, <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>!</code>, etc.
 behave as logical operators.</p>
@@ -290,8 +291,8 @@ and descriptive. Both are achieved with the <code>of</code> operator.</p>
 <pre><code>m.nat
 k(int16)
 </code></pre>
-<p>Generally, static types (<code>lit</code>s, <code>type</code>s, <code>macro</code>s, etc.) cannot be descriptively cast.
-Similarly, descriptively casting to a wider type invokes undefined behavior.</p>
+<p>Descriptive casts to a wider type invoke undefined behavior.
+Some static types (<code>type</code>s, <code>macro</code>s, etc.) cannot be descriptively cast.</p>
 <h2>Conditionals</h2>
 <p>The <code>if</code> keyword allows for the conditional execution of a statement or
 block of statements based on the result of a boolean expression.</p>
@@ -562,6 +563,7 @@ int8 or int16 or int32 b = 257
 ( nat8 or int16 ) ptr p = make[] 1, 2, 3, 4
 </code></pre>
 <h2>More Lists</h2>
+<p>Lists can be manipulated as objects.</p>
 <pre><code>list L = 1 ⟷ any list L = 1
 
 nat or int list r = 1, 2, 3, -1, -2, -3
@@ -585,7 +587,8 @@ Some fields are:</p>
 <ul>
 <li><code>env.debug</code> -- a boolean; <code>true</code> if compiling in debug mode</li>
 <li><code>env.extensions</code> -- a list of literals ('Q', 'F', etc.)</li>
-<li><code>env.arch</code> --</li>
+<li><code>env.arch</code></li>
+<li><code>env.version</code></li>
 </ul>
 <h2>Customs</h2>
 <p>By default, functions and global variables have internal linkage --
@@ -691,6 +694,19 @@ defined( defined ) ⟷ true
 <code>roundto</code>
 <code>roundfrom</code></p>
 <p><code>embed</code></p>
+<h2>Potential Extensions</h2>
+<ul>
+<li>'S' assembly extension (platform-specific)</li>
+<li>'Q' fixed point extension</li>
+<li>'F' floating point extension</li>
+<li>'R' region extension</li>
+<li>'B' bitfield extension -- allows exposing values as <code>bool ptr</code>s with <code>.bits</code></li>
+<li>'A' atomics extension -- adds <code>atomic</code> qualifier for statements and blocks</li>
+<li>'M' math extension? -- adds typical trig/linear routines,
+crucially with a precision parameter</li>
+<li>'L' nonstatic lists extension -- far terser, cleaner programs
+at the expense of compiler complexity</li>
+</ul>
 <h2>Assertions</h2>
 <p>Assertions are expressed with the <code>assert</code> keyword, followed by a boolean expression.</p>
 <pre><code>assert v == 5
@@ -721,7 +737,6 @@ to expect.</p>
 </code></pre>
 <p><code>static expect</code> creaks upon failure.</p>
 <h2>Inline Assembly</h2>
-<p>Here's where Fifth gets interesting.</p>
 <p>Fifth's inline assembly extension exposes
 every RISC-V register as a variable, and
 every instruction as a statement and a builtin.
@@ -781,17 +796,20 @@ With that said, there are some caveats --
 for example, <code>$nop</code> is defined semantically
 to always emit <code>addi x0, x0, 0</code>,
 so it can be used reliably in delay loops.</p>
-<h2>Potential Extensions</h2>
-<ul>
-<li>'Q' fixed point extension</li>
-<li>'F' floating point extension</li>
-<li>'B' bitfield extension -- allows exposing values as <code>bool ptr</code>s with <code>.bits</code></li>
-<li>'A' atomics extension -- adds <code>atomic</code> qualifier for statements and blocks</li>
-<li>'M' math extension? -- adds typical trig/linear routines,
-crucially with a precision parameter</li>
-<li>'L' nonstatic lists extension -- far terser, cleaner programs
-at the expense of compiler complexity</li>
-</ul>
+<h2>Regions</h2>
+<p>Regions offer an intuitive inline alternative to linker scripts.
+A region is a list of addresses, qualified with attributes
+describing how they can be read from, written to, and executed from.</p>
+<pre><code>&lt;read !write execute&gt; region rom = 0x10000000..0x100FFFFF
+&lt;read write !execute&gt; region ram = 0x20000000..0x2000FFFF
+</code></pre>
+<p>The attributes <code>hot</code>, <code>cold</code>, and <code>volatile</code> may be used as qualifiers.
+Lists may be noncontiguous.</p>
+<pre><code>&lt;cold cold read&gt; region slowflash = 0x40000000..0x403FFFFF
+&lt;volatile read volatile write&gt; region gpioreg = 
+    0x10004000..0x10004003,
+    0x1000400C..0x1000400F
+</code></pre>
 <h2>Attributes</h2>
 <p>Attributes are qualifiers that appear in angle brackets.
 Many are at least partially redundant, but they're useful shortcuts
@@ -825,7 +843,14 @@ inline		# ensure function/macro is inlined
 outline		# ensure function/macro uses stack
 
 deprecated	# creak when invoked
+
+# for regions:
+read
+write		# obviates `constant`
+execute		
+volatile	# obviates `explicit`
 </code></pre>
+<p>Attributes can be prefixed with <code>!</code> or <code>not</code>.</p>
 <h2>Calling Convention</h2>
 <p>Given that Fifth's functions have features C lacks
 (and vice versa),
@@ -900,10 +925,10 @@ nat ptr func hexstr( nat n )
 bool passes luhn( nat8 ptr c, nat n )
 {
     nat sum = 0
-    for nat i = n - 1; i &gt;= 0; i--
+    for n --; n &gt;= 0; n --
     {
-        nat digit = c[ i ] - '0'
-        if i % 2 != 0: sum += digit
+        nat digit = c[ n ] - '0'
+        if n % 2 != 0: sum += digit
         el digit &lt; 5:  sum += 2 * digit
         el:            sum += 2 * digit - 9
     }
@@ -948,7 +973,6 @@ func shellsort( nat ptr a, nat n )
 <li><code>is</code> and <code>!is</code> operator: <code>bool same = p[ 0..9 ] is q[ 0..9 ]</code></li>
 <li>cleaner, more unified namespace concept</li>
 <li>namespace variables to functions, e.g. to achieve C's <code>static</code></li>
-<li>functions declarations use <code>=</code> like everything else; <code>{}</code> are &quot;function literals&quot; (?); allows for anonymous functions?</li>
 </ul>
 </body>
 </html>

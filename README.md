@@ -50,7 +50,7 @@ however, `lit` is an implicitly static type, so all are resolved at
 compile time. `lit`s cast implicitly to any other type.
 
 `nat` and `int` are unsigned and two's complement signed integers, respectively. 
-Their widths are equal to the number of bits in an address on the target machine.
+Their widths are equal to that of a register on the target machine.
 Many of their behaviors -- overflow, division by zero, etc. -- are undefined,
 at least without invoking inline assembly.
 Fixed-width variants -- `nat8`, `int64`, etc. -- are also available.
@@ -227,9 +227,11 @@ The unary `-` operator negates its operand.
 ```
  
 ## Bitwise Operators #
-TODO: examples that don't depict `lit` semantics
 
 The unary operator `!` inverts the bits of its operand.
+```
+!0b00110110.nat8 ⟷ 0b11001001.nat8
+```
 
 The `&`, `|`, and `^` operators compute the bitwise
 and, or and exclusive or of their operands, respectively.
@@ -263,7 +265,7 @@ is equal or nonequal to any member of the righthand list.
 ```
 5 in 3, 4, 5 ⟷ true
 5 !in 1...9 ⟷ false
-5 in ⟷ false
+5 in 0.9...9.9 ⟷ false
 ```
 When operating on boolean values, `&`, `|`, `^`, `!`, etc.
 behave as logical operators.
@@ -346,8 +348,8 @@ Descriptive casts interpret an existing value as being of a new type.
 m.nat
 k(int16)
 ```
-Generally, static types (`lit`s, `type`s, `macro`s, etc.) cannot be descriptively cast.
-Similarly, descriptively casting to a wider type invokes undefined behavior.
+Descriptive casts to a wider type invoke undefined behavior.
+Some static types (`type`s, `macro`s, etc.) cannot be descriptively cast.
 
 ## Conditionals
 
@@ -679,7 +681,7 @@ int8 or int16 or int32 b = 257
 ```
 
 ## More Lists
-
+Lists can be manipulated as objects.
 ```
 list L = 1 ⟷ any list L = 1
 
@@ -709,7 +711,8 @@ TODO
 Some fields are:
 * `env.debug` -- a boolean; `true` if compiling in debug mode
 * `env.extensions` -- a list of literals ('Q', 'F', etc.)
-* `env.arch` -- 
+* `env.arch` 
+* `env.version`
 
 ## Customs
 
@@ -849,6 +852,19 @@ TODO: add these builtins:
 
 `embed`
 
+## Potential Extensions
+
+* 'S' assembly extension (platform-specific)
+* 'Q' fixed point extension
+* 'F' floating point extension
+* 'R' region extension  
+* 'B' bitfield extension -- allows exposing values as `bool ptr`s with `.bits`
+* 'A' atomics extension -- adds `atomic` qualifier for statements and blocks
+* 'M' math extension? -- adds typical trig/linear routines,
+	crucially with a precision parameter
+* 'L' nonstatic lists extension -- far terser, cleaner programs
+	at the expense of compiler complexity
+
 ## Assertions #
 
 Assertions are expressed with the `assert` keyword, followed by a boolean expression.
@@ -888,8 +904,6 @@ expect q > 0
 
 
 ## Inline Assembly #
-
-Here's where Fifth gets interesting.
 
 Fifth's inline assembly extension exposes
 every RISC-V register as a variable, and
@@ -956,16 +970,23 @@ for example, `$nop` is defined semantically
 to always emit `addi x0, x0, 0`, 
 so it can be used reliably in delay loops.
 
-## Potential Extensions
+## Regions
 
-* 'Q' fixed point extension
-* 'F' floating point extension
-* 'B' bitfield extension -- allows exposing values as `bool ptr`s with `.bits`
-* 'A' atomics extension -- adds `atomic` qualifier for statements and blocks
-* 'M' math extension? -- adds typical trig/linear routines,
-	crucially with a precision parameter
-* 'L' nonstatic lists extension -- far terser, cleaner programs
-	at the expense of compiler complexity
+Regions offer an intuitive inline alternative to linker scripts.
+A region is a list of addresses, qualified with attributes
+describing how they can be read from, written to, and executed from.
+```
+<read !write execute> region rom = 0x10000000..0x100FFFFF
+<read write !execute> region ram = 0x20000000..0x2000FFFF
+```
+The attributes `hot`, `cold`, and `volatile` may be used as qualifiers.
+Lists may be noncontiguous.
+```
+<cold cold read> region slowflash = 0x40000000..0x403FFFFF
+<volatile read volatile write> region gpioreg = 
+	0x10004000..0x10004003,
+	0x1000400C..0x1000400F
+```
 
 ## Attributes
 
@@ -974,7 +995,6 @@ Many are at least partially redundant, but they're useful shortcuts
 for programmers (and implementors) who don't want to deal with
 complex assertions or compiler flags to obtain good performance.
 This is not an exhaustive list, although it might already be too long.
-
 ```
 static		# <static> ⟷ static
 constant	# akin to C's `const`, mostly for pointers
@@ -1003,7 +1023,14 @@ inline		# ensure function/macro is inlined
 outline		# ensure function/macro uses stack
 
 deprecated	# creak when invoked
+
+# for regions:
+read
+write		# obviates `constant`
+execute		
+volatile	# obviates `explicit`
 ```
+Attributes can be prefixed with `!` or `not`.
 
 ## Calling Convention
 
@@ -1088,10 +1115,10 @@ nat ptr func hexstr( nat n )
 bool passes luhn( nat8 ptr c, nat n )
 {
 	nat sum = 0
-	for nat i = n - 1; i >= 0; i--
+	for n --; n >= 0; n --
 	{
-		nat digit = c[ i ] - '0'
-		if i % 2 != 0: sum += digit
+		nat digit = c[ n ] - '0'
+		if n % 2 != 0: sum += digit
 		el digit < 5:  sum += 2 * digit
 		el:            sum += 2 * digit - 9
 	}
@@ -1137,4 +1164,3 @@ func shellsort( nat ptr a, nat n )
 * `is` and `!is` operator: `bool same = p[ 0..9 ] is q[ 0..9 ]`
 * cleaner, more unified namespace concept
 * namespace variables to functions, e.g. to achieve C's `static`
-* functions declarations use `=` like everything else; `{}` are "function literals" (?); allows for anonymous functions?
